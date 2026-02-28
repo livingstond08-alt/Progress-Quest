@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Interactive FFT Simulator with Live Mic</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: radial-gradient(circle at top, #0c0f14 0%, #050608 100%);
+      color: #cfd8dc;
+      margin: 20px;
+    }
+    h2 {
+      font-weight: 400;
+      margin-bottom: 12px;
+      color: #e0e6eb;
+    }
+    canvas {
+      border-radius: 12px;
+      background: #030406;
+      box-shadow: 0 0 22px rgba(0, 255, 255, 0.14);
+      display: block;
+      margin-bottom: 14px;
+    }
+    .controls {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 10px 18px;
+      max-width: 820px;
+      margin-top: 14px;
+    }
+    label {
+      font-size: 0.85rem;
+      opacity: 0.85;
+    }
+    input[type="range"] {
+      accent-color: #00ffd5;
+    }
+    .value {
+      font-size: 0.8rem;
+      opacity: 0.7;
+      margin-left: 8px;
+    }
+    .toggle {
+      grid-column: span 2;
+      margin-top: 10px;
+    }
+    button {
+      background: #0d1b20;
+      color: #cfd8dc;
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 8px;
+      padding: 8px 14px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    button.active {
+      background: #00ffd5;
+      color: #000;
+      border-color: #00ffd5;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Interactive FFT Signal Simulator</h2>
+
+<canvas id="timeCanvas" width="900" height="260"></canvas>
+<canvas id="freqCanvas" width="900" height="300"></canvas>
+
+<div class="controls">
+  <label>Frequency 1 (Hz) <span class="value" id="vFreq1"></span></label>
+  <input type="range" id="freq1" min="1" max="200" value="12" />
+
+  <label>Amplitude 1 <span class="value" id="vAmp1"></span></label>
+  <input type="range" id="amp1" min="0" max="1" step="0.01" value="0.7" />
+
+  <label>Frequency 2 (Hz) <span class="value" id="vFreq2"></span></label>
+  <input type="range" id="freq2" min="1" max="200" value="28" />
+
+  <label>Amplitude 2 <span class="value" id="vAmp2"></span></label>
+  <input type="range" id="amp2" min="0" max="1" step="0.01" value="0.5" />
+
+  <label>Frequency 3 (Hz) <span class="value" id="vFreq3"></span></label>
+  <input type="range" id="freq3" min="1" max="200" value="55" />
+
+  <label>Amplitude 3 <span class="value" id="vAmp3"></span></label>
+  <input type="range" id="amp3" min="0" max="1" step="0.01" value="0.35" />
+
+  <label>Noise Level <span class="value" id="vNoise"></span></label>
+  <input type="range" id="noise" min="0" max="1" step="0.01" value="0.05" />
+
+  <div class="toggle">
+    <button id="micBtn">Enable Microphone FFT</button>
+  </div>
+</div>
+
+<script>
+const timeCanvas = document.getElementById("timeCanvas");
+const freqCanvas = document.getElementById("freqCanvas");
+const tctx = timeCanvas.getContext("2d");
+const fctx = freqCanvas.getContext("2d");
+
+const freq1 = document.getElementById("freq1");
+const amp1 = document.getElementById("amp1");
+const freq2 = document.getElementById("freq2");
+const amp2 = document.getElementById("amp2");
+const freq3 = document.getElementById("freq3");
+const amp3 = document.getElementById("amp3");
+const noise = document.getElementById("noise");
+
+const vFreq1 = document.getElementById("vFreq1");
+const vAmp1 = document.getElementById("vAmp1");
+const vFreq2 = document.getElementById("vFreq2");
+const vAmp2 = document.getElementById("vAmp2");
+const vFreq3 = document.getElementById("vFreq3");
+const vAmp3 = document.getElementById("vAmp3");
+const vNoise = document.getElementById("vNoise");
+
+const micBtn = document.getElementById("micBtn");
+
+let useMic = false;
+let audioCtx = null;
+let analyser = null;
+let micData = null;
+
+const sampleRate = 2048;
+const N = 2048;
+let timeData = new Array(N).fill(0);
+
+// ---------- FFT ----------
+function fft(input) {
+  const n = input.length;
+  if (n <= 1) return input;
+
+  const even = fft(input.filter((_, i) => i % 2 === 0));
+  const odd = fft(input.filter((_, i) => i % 2 === 1));
+
+  const result = new Array(n);
+  for (let k = 0; k < n / 2; k++) {
+    const t = expComplex(-2 * Math.PI * k / n, odd[k]);
+    result[k] = addComplex(even[k], t);
+    result[k + n / 2] = subComplex(even[k], t);
+  }
+  return result;
+}
+
+function expComplex(theta, c) {
+  const re = Math.cos(theta);
+  const im = Math.sin(theta);
+  return {
+    re: c.re * re - c.im * im,
+    im: c.re * im + c.im * re
+  };
+}
+
+function addComplex(a, b) {
+  return { re: a.re + b.re, im: a.im + b.im };
+}
+
+function subComplex(a, b) {
+  return { re: a.re - b.re, im: a.im - b.im };
+}
+
+// ---------- GRID + LABELS ----------
+function drawGrid(ctx, width, height, spacing = 50) {
+  ctx.strokeStyle = "rgba(255,255,255,0.04)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x < width; x += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, height);
+    ctx.stroke();
+  }
+  for (let y = 0; y < height; y += spacing) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(width, y);
+    ctx.stroke();
+  }
+}
+
+function drawTimeAxisLabels() {
+  const ctx = tctx;
+  const w = timeCanvas.width;
+  const h = timeCanvas.height;
+
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.font = "11px system-ui";
+
+  ctx.save();
+  ctx.translate(14, h / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = "center";
+  ctx.fillText("Amplitude", 0, 0);
+  ctx.restore();
+
+  ctx.textAlign = "center";
+  ctx.fillText("Time (s)", w / 2, h - 8);
+
+  ctx.textAlign = "right";
+  ctx.fillText("1.0", 42, 28);
+  ctx.fillText("0", 42, h / 2 + 4);
+  ctx.fillText("-1.0", 42, h - 28);
+
+  const duration = N / sampleRate;
+  ctx.textAlign = "center";
+  ctx.fillText("0 s", 80, h - 22);
+  ctx.fillText(duration.toFixed(3) + " s", w - 80, h - 22);
+}
+
+let zoomMinHz = 0;
+let zoomMaxHz = sampleRate / 2;
+
+function drawFreqAxisLabels() {
+  const ctx = fctx;
+  const w = freqCanvas.width;
+  const h = freqCanvas.height;
+
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.font = "11px system-ui";
+
+  ctx.save();
+  ctx.translate(16, h / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = "center";
+  ctx.fillText("Magnitude", 0, 0);
+  ctx.restore();
+
+  ctx.textAlign = "center";
+  ctx.fillText("Frequency (Hz)", w / 2, h - 8);
+
+  ctx.textAlign = "right";
+  ctx.fillText("Peak", 46, 26);
+  ctx.fillText("0", 46, h - 26);
+
+  ctx.textAlign = "center";
+  ctx.fillText(`${zoomMinHz.toFixed(1)} Hz`, 90, h - 22);
+  ctx.fillText(`${zoomMaxHz.toFixed(1)} Hz`, w - 90, h - 22);
+}
+
+// ---------- DRAW ----------
+function drawTime(signal) {
+  tctx.clearRect(0, 0, timeCanvas.width, timeCanvas.height);
+  drawGrid(tctx, timeCanvas.width, timeCanvas.height, 50);
+  drawTimeAxisLabels();
+
+  tctx.beginPath();
+  tctx.lineWidth = 2.2;
+  tctx.strokeStyle = "#00ffd5";
+  tctx.shadowBlur = 10;
+  tctx.shadowColor = "#00ffd5";
+
+  for (let i = 0; i < signal.length; i++) {
+    const x = (i / signal.length) * timeCanvas.width;
+    const y = timeCanvas.height / 2 - signal[i] * 90;
+    if (i === 0) tctx.moveTo(x, y);
+    else tctx.lineTo(x, y);
+  }
+  tctx.stroke();
+  tctx.shadowBlur = 0;
+}
+
+function drawFreq(magnitudes) {
+  fctx.clearRect(0, 0, freqCanvas.width, freqCanvas.height);
+  drawGrid(fctx, freqCanvas.width, freqCanvas.height, 60);
+  drawFreqAxisLabels();
+
+  const half = magnitudes.length / 2;
+  const nyquist = sampleRate / 2;
+  const hzPerBin = nyquist / half;
+
+  // Find dominant frequency region
+  let maxMag = 0;
+  let maxIndex = 0;
+  for (let i = 1; i < half; i++) {
+    if (magnitudes[i] > maxMag) {
+      maxMag = magnitudes[i];
+      maxIndex = i;
+    }
+  }
+
+  const peakHz = maxIndex * hzPerBin;
+  const span = Math.max(40, peakHz * 0.4); // adaptive window
+  zoomMinHz = Math.max(0, peakHz - span);
+  zoomMaxHz = Math.min(nyquist, peakHz + span);
+
+  const minBin = Math.floor(zoomMinHz / hzPerBin);
+  const maxBin = Math.ceil(zoomMaxHz / hzPerBin);
+  const visibleBins = maxBin - minBin;
+
+  const barWidth = freqCanvas.width / visibleBins;
+
+  const gradient = fctx.createLinearGradient(0, 0, 0, freqCanvas.height);
+  gradient.addColorStop(0, "#ff7fd8");
+  gradient.addColorStop(0.5, "#00ffd5");
+  gradient.addColorStop(1, "#4da3ff");
+
+  fctx.fillStyle = gradient;
+  fctx.shadowBlur = 8;
+  fctx.shadowColor = "#00ffd5";
+
+  for (let i = minBin; i < maxBin; i++) {
+    const mag = magnitudes[i];
+    const scaled = Math.min(mag * 0.6, freqCanvas.height);
+    const x = (i - minBin) * barWidth;
+    fctx.fillRect(x, freqCanvas.height, barWidth - 1, -scaled);
+  }
+
+  fctx.shadowBlur = 0;
+}
+
+// ---------- VALUE DISPLAYS ----------
+function updateValueDisplays() {
+  vFreq1.textContent = `${freq1.value} Hz`;
+  vAmp1.textContent = amp1.value;
+  vFreq2.textContent = `${freq2.value} Hz`;
+  vAmp2.textContent = amp2.value;
+  vFreq3.textContent = `${freq3.value} Hz`;
+  vAmp3.textContent = amp3.value;
+  vNoise.textContent = noise.value;
+}
+
+// ---------- MICROPHONE ----------
+async function enableMic() {
+  if (useMic) {
+    useMic = false;
+    micBtn.classList.remove("active");
+    micBtn.textContent = "Enable Microphone FFT";
+    return;
+  }
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = N;
+    source.connect(analyser);
+    micData = new Uint8Array(analyser.fftSize);
+    useMic = true;
+    micBtn.classList.add("active");
+    micBtn.textContent = "Microphone Active";
+  } catch (err) {
+    alert("Microphone access denied.");
+  }
+}
+
+micBtn.addEventListener("click", enableMic);
+
+// ---------- UPDATE LOOP ----------
+function update() {
+  updateValueDisplays();
+
+  if (useMic && analyser) {
+    analyser.getByteTimeDomainData(micData);
+    for (let i = 0; i < N; i++) {
+      timeData[i] = (micData[i] - 128) / 128;
+    }
+  } else {
+    const f1 = parseFloat(freq1.value);
+    const a1 = parseFloat(amp1.value);
+    const f2 = parseFloat(freq2.value);
+    const a2 = parseFloat(amp2.value);
+    const f3 = parseFloat(freq3.value);
+    const a3 = parseFloat(amp3.value);
+    const n = parseFloat(noise.value);
+
+    for (let i = 0; i < N; i++) {
+      const t = i / sampleRate;
+      timeData[i] =
+        a1 * Math.sin(2 * Math.PI * f1 * t) +
+        a2 * Math.sin(2 * Math.PI * f2 * t) +
+        a3 * Math.sin(2 * Math.PI * f3 * t) +
+        n * (Math.random() * 2 - 1);
+    }
+  }
+
+  drawTime(timeData);
+
+  const complexSignal = timeData.map(v => ({ re: v, im: 0 }));
+  const spectrum = fft(complexSignal);
+  const mags = spectrum.map(c => Math.sqrt(c.re ** 2 + c.im ** 2));
+
+  drawFreq(mags);
+
+  requestAnimationFrame(update);
+}
+
+update();
+</script>
+
+</body>
+</html>
