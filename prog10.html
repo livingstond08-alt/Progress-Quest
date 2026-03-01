@@ -1,0 +1,1085 @@
+<!--
+PASTE THESE CHANGES INTO YOUR EXISTING FILE.
+I’m giving you a full, ready-to-run version with your requests implemented:
+
+✅ Gear improves stats 50% more (power/def/crit/dodge on gear multiplied by 1.5)
+✅ Going to town replenishes health (heal to full on enterTown + small log + pulse)
+✅ Gold is used for health potions (added potions, auto-buy in town, and optional manual button)
+-->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Progress Quest — Gear Buff + Town Heal + Potions</title>
+<style>
+  :root{
+    --accent: 210;
+    --accent2: 280;
+    --accentSat: 70%;
+    --accentLit: 58%;
+    --glowA: hsla(var(--accent), 70%, 60%, 0.25);
+    --glowB: hsla(var(--accent2), 70%, 60%, 0.20);
+    --panel: #151922;
+    --panel2: #10141c;
+    --border: #333;
+    --border2: #2a2f3a;
+    --text: #e6e6e6;
+    --dim: #9aa0aa;
+  }
+
+  body{
+    background:
+      radial-gradient(circle at top, hsla(var(--accent), 55%, 22%, 0.35), transparent 55%),
+      radial-gradient(circle at bottom right, hsla(var(--accent2), 55%, 20%, 0.30), transparent 60%),
+      #0e1015;
+    color: var(--text);
+    font-family: Georgia, serif;
+    margin: 0;
+    padding: 16px;
+    transition: background 600ms ease;
+  }
+
+  h1{font-weight:normal;text-align:center;margin:8px 0 10px;}
+
+  .wrap{max-width:1240px;margin:0 auto;}
+
+  .topbar{
+    display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center;
+    background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:10px;margin-bottom:12px;
+    box-shadow: 0 0 18px rgba(0,0,0,0.35);
+  }
+
+  button, input[type="range"], label{
+    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;font-size:12px;
+  }
+  button{
+    background:var(--panel2);color:var(--text);border:1px solid var(--border2);border-radius:10px;
+    padding:8px 10px;cursor:pointer;
+  }
+  button:hover{border-color: hsla(var(--accent), 60%, 60%, 0.55);}
+  .pill{
+    display:inline-block;padding:4px 10px;border:1px solid var(--border2);border-radius:999px;
+    background:var(--panel2);color:#cfd6e3;font-size:12px;
+    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  }
+
+  .grid{display:grid;grid-template-columns:430px 1fr;gap:14px;}
+  .card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:12px;
+    box-shadow: 0 0 22px rgba(0,0,0,0.35);
+  }
+
+  .big{font-size:18px;margin-bottom:8px;}
+  .row{display:flex;justify-content:space-between;gap:10px;margin:4px 0;}
+  .label{color:#b9beca}
+  .val{color:#fff}
+  .dim{color:var(--dim)}
+  .tiny{font-size:12px;}
+
+  .scroll{height:150px;overflow:auto;border:1px solid var(--border2);border-radius:10px;padding:8px;background:var(--panel2);font-size:13px;line-height:1.35;}
+  .scrollTall{height:660px;overflow:auto;border:1px solid var(--border2);border-radius:10px;padding:10px;background:var(--panel2);font-size:14px;line-height:1.45;}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  hr{border:none;border-top:1px solid var(--border2);margin:10px 0;}
+
+  #err{
+    display:none;background:#2b1010;border:1px solid #6a2a2a;color:#ffd6d6;border-radius:12px;
+    padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+    font-size:12px;white-space:pre-wrap;margin:0 0 12px;
+  }
+
+  .tag{
+    display:inline-block;min-width:72px;text-align:center;border-radius:8px;padding:2px 6px;margin-right:8px;
+    border:1px solid var(--border2);background:#0d1017;color:#cfd6e3;font-size:11px;
+    font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;
+  }
+  .tag-town{border-color:#3f4a2a}
+  .tag-combat{border-color:#4a2a2a}
+  .tag-party{border-color:#3a2a4a}
+  .tag-main{border-color:#2a2f3a}
+
+  .logline{
+    padding: 3px 6px;
+    border-radius: 10px;
+    transition: background 300ms ease, box-shadow 300ms ease;
+  }
+  .event-level{
+    background: linear-gradient(90deg, hsla(var(--accent), 80%, 55%, 0.18), transparent 70%);
+    box-shadow: 0 0 18px var(--glowA);
+  }
+  .event-town{
+    background: linear-gradient(90deg, hsla(115, 70%, 45%, 0.16), transparent 70%);
+  }
+  .event-gear{
+    background: linear-gradient(90deg, hsla(var(--accent2), 75%, 55%, 0.16), transparent 70%);
+  }
+  .event-mood{
+    background: linear-gradient(90deg, hsla(45, 90%, 55%, 0.14), transparent 70%);
+  }
+  .event-death{
+    background: linear-gradient(90deg, hsla(0, 80%, 55%, 0.16), transparent 70%);
+  }
+  .event-boss{
+    background: linear-gradient(90deg, hsla(330, 80%, 55%, 0.16), transparent 70%);
+    box-shadow: 0 0 18px var(--glowB);
+  }
+
+  .pulse{ animation: pulseGlow 650ms ease-out; }
+  @keyframes pulseGlow{
+    0%{ box-shadow: 0 0 0 rgba(0,0,0,0); }
+    25%{ box-shadow: 0 0 18px var(--glowA); }
+    100%{ box-shadow: 0 0 0 rgba(0,0,0,0); }
+  }
+
+  .bar{
+    height: 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border2);
+    background: #0b0e14;
+    overflow: hidden;
+    margin-top: 6px;
+  }
+  .barFill{
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, hsla(var(--accent), 80%, 55%, 0.95), hsla(var(--accent2), 80%, 55%, 0.85));
+    transition: width 320ms ease;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div id="err"></div>
+
+  <h1>🧙 Progress Quest — Gear Buff + Town Heal + Potions</h1>
+
+  <div class="topbar">
+    <button id="btnPause">Pause</button>
+    <button id="btnStep">Step</button>
+    <span class="pill">Speed: <span id="speedLabel">525</span>ms</span>
+    <input id="speed" type="range" min="120" max="1400" value="525" />
+    <label class="pill"><input id="fastLevel" type="checkbox" checked /> Fast leveling</label>
+    <button id="btnXP">+50 XP</button>
+    <button id="btnGold">+20 Gold</button>
+    <button id="btnTown">Force Town</button>
+    <button id="btnSpawn">Spawn Monster</button>
+    <button id="btnRecruit">Recruit Ally</button>
+    <button id="btnPotion">Drink Potion</button>
+    <button id="btnClear">Clear Log</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="big">Hero</div>
+      <div class="row"><div class="label">Class</div><div class="val" id="heroClass"></div></div>
+
+      <div class="row"><div class="label">Level</div><div class="val" id="level">1</div></div>
+      <div class="row">
+        <div class="label">XP</div>
+        <div class="val"><span id="xp">0</span> / <span id="xpNeed">25</span></div>
+      </div>
+      <div class="bar" title="XP progress">
+        <div id="xpBar" class="barFill"></div>
+      </div>
+
+      <div class="row"><div class="label">HP</div><div class="val"><span id="hp">30</span> / <span id="hpMax">30</span></div></div>
+      <div class="row"><div class="label">Gold</div><div class="val" id="gold">0</div></div>
+
+      <!-- NEW: potions -->
+      <div class="row"><div class="label">Potions</div><div class="val"><span id="pots">0</span></div></div>
+
+      <div class="row"><div class="label">Location</div><div class="val"><span class="pill" id="location">Wilderness</span></div></div>
+
+      <hr>
+
+      <div class="big">Derived Stats</div>
+      <div class="row"><div class="label">Power</div><div class="val" id="power">0</div></div>
+      <div class="row"><div class="label">Defense</div><div class="val" id="defense">0</div></div>
+      <div class="row"><div class="label">Crit%</div><div class="val" id="critp">0%</div></div>
+      <div class="row"><div class="label">Dodge%</div><div class="val" id="dodgep">0%</div></div>
+
+      <hr>
+
+      <div class="big">Party</div>
+      <div class="row"><div class="label">Members</div><div class="val"><span id="partyCount">0</span>/3</div></div>
+      <div class="scroll tiny" id="partyBox"></div>
+
+      <hr>
+
+      <div class="big">Mood</div>
+      <div class="row"><div class="label">Current</div><div class="val"><span class="pill" id="moodName"></span></div></div>
+      <div class="row"><div class="label">Drift</div><div class="val" id="moodDrift">0%</div></div>
+      <div class="row"><div class="label">Flavor</div><div class="val tiny dim" id="moodFlavor"></div></div>
+
+      <hr>
+
+      <div class="big">Monster</div>
+      <div class="row"><div class="label">Target</div><div class="val" id="monsterName">—</div></div>
+      <div class="row"><div class="label">HP</div><div class="val"><span id="mHP">0</span> / <span id="mMax">0</span></div></div>
+      <div class="row"><div class="label">ATK</div><div class="val" id="mAtk">0</div></div>
+      <div class="row"><div class="label">Status</div><div class="val"><span class="pill" id="mStatus">Idle</span></div></div>
+      <div class="row"><div class="label">Last</div><div class="val tiny dim" id="mLast">—</div></div>
+
+      <hr>
+
+      <div class="big">Inventory</div>
+      <div class="row"><div class="label">Bag Slots</div><div class="val"><span id="invCount">0</span>/999</div></div>
+      <div class="cols">
+        <div>
+          <div class="label tiny dim">Equipped</div>
+          <div class="scroll tiny" id="equippedBox"></div>
+        </div>
+        <div>
+          <div class="label tiny dim">Bag</div>
+          <div class="scroll tiny" id="inventoryBox"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="big">Log</div>
+      <div id="log" class="scrollTall"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---------- error surface ----------
+  const errBox = document.getElementById("err");
+  function showError(e){
+    errBox.style.display = "block";
+    errBox.textContent = "Runtime error (halted):\n\n" + (e && e.stack ? e.stack : String(e));
+  }
+  window.addEventListener("error", (ev) => showError(ev.error || ev.message));
+  window.addEventListener("unhandledrejection", (ev) => showError(ev.reason));
+
+  // ---------- helpers ----------
+  const el = id => document.getElementById(id);
+  const logBox = el("log");
+
+  let lastLog = { kind:"", html:"", eventClass:"", el:null, count:1 };
+  const LOG_MAX = 260;
+
+  function appendLog(kind, html, eventClass=""){
+    const tagClass =
+      kind === "TOWN" ? "tag-town" :
+      kind === "COMBAT" ? "tag-combat" :
+      kind === "PARTY" ? "tag-party" : "tag-main";
+
+    if(lastLog.el && lastLog.kind === kind && lastLog.html === html && lastLog.eventClass === (eventClass||"")){
+      lastLog.count++;
+      lastLog.el.innerHTML = `<span class="tag ${tagClass}">${kind}</span>${html} <span class="dim">×${lastLog.count}</span>`;
+      logBox.scrollTop = logBox.scrollHeight;
+      return;
+    }
+
+    const div = document.createElement("div");
+    div.className = "logline " + (eventClass || "");
+    div.innerHTML = `<span class="tag ${tagClass}">${kind}</span>${html}`;
+    logBox.appendChild(div);
+    logBox.scrollTop = logBox.scrollHeight;
+
+    lastLog = { kind, html, eventClass:(eventClass||""), el:div, count:1 };
+
+    while(logBox.children.length > LOG_MAX) logBox.removeChild(logBox.firstChild);
+  }
+
+  const log  = (html, cls="") => appendLog("MAIN", html, cls);
+  const clog = (html, cls="") => appendLog("COMBAT", html, cls);
+  const tlog = (html, cls="") => appendLog("TOWN", html, cls);
+  const plog = (html, cls="") => appendLog("PARTY", html, cls);
+
+  function rand(arr){ return arr[Math.floor(Math.random() * arr.length)]; }
+  function randi(a,b){ return a + Math.floor(Math.random() * (b - a + 1)); }
+  function clamp(n, a, b){ return Math.max(a, Math.min(b, n)); }
+
+  function pulse(id){
+    const node = el(id);
+    if(!node) return;
+    node.classList.remove("pulse");
+    void node.offsetWidth;
+    node.classList.add("pulse");
+  }
+
+  // ---------- pools ----------
+  const classes = ["Occult Barista","Junior Genghis","Taxonomist of Shadows","Licensed Necromancer","Adjunct Wizard","Dungeon Intern","Temporal Accountant","Freelance Paladin","Archivist of Mild Doom","Unpaid Prophet"];
+  const moods = [
+    { name:"Triumphant Beige", flavor:"A heroic numbness, like winning a trophy made of oatmeal." },
+    { name:"Mildly Haunted", flavor:"You feel watched by paperwork that has never been filed." },
+    { name:"Overqualified Panic", flavor:"You understand the problem perfectly and still choose violence." },
+    { name:"Sincere Menace", flavor:"You smile kindly while the universe backs away slowly." },
+    { name:"Moonlit Bureaucracy", flavor:"Fate is real, but it requires Form 7-B in triplicate." },
+    { name:"Nostalgic Doom", flavor:"Everything is beautiful, especially the ending." },
+    { name:"Fermented Wisdom", flavor:"Your thoughts bubble quietly, like a barrel in a dark cellar." },
+    { name:"Cosmic Petty", flavor:"You are willing to save the world, but only to spite someone." }
+  ];
+  const monsters = ["Spreadsheet Wraith","Crypt of Mild Inconvenience","The Auditor of Teeth","Unpaid Sidequest","Goblin of Interpretive Dance","Cerberus (Intern)","Hedge Wizard","Mood Slime","The 404 Hydra","Paper Golem"];
+  const junkItems = ["Ring of Slight Dampness","Scroll of Unreadable Text","Potion of Ambiguous Effect","Key to the Wrong Door","Lantern of Dim Revelation","Belt of Improvised Destiny","Coupon for a Quest","Spoon of Martial Doubt"];
+  const uselessSkills = ["Advanced Lint Interpretation","Weaponized Politeness","Minor Footnote Summoning","Intermediate Breathing","Historical Mispronunciation","Diplomatic Screaming","Ceremonial Button Pressing","Passive-Aggressive Healing"];
+
+  const allyAdj = ["Wandering","Unlicensed","Semi-Mythic","Budget","Moonlit","Retired","Highly Specific","Ceremonial","Accidental","Unionized"];
+  const allyNoun = ["Squire","Oracle","Intern","Haunt","Marshal","Librarian","Bandit","Monk","Mechanic","Poet","Lawyer","Clerk"];
+  const allyRole = ["Damage","Support","Chaos","Damage","Damage","Support","Chaos","Damage","Support","Chaos"];
+
+  const gearAdj = ["Practical","Cursed","Executive","Moonlit","Antique","Budget","Ceremonial","Heroic","Suspicious","Tax-Deductible"];
+  const gearNoun = ["Helm","Tunic","Gloves","Boots","Amulet","Sword","Dagger","Mace","Shield","Orb","Ledger"];
+  const gearSuffix = ["of Vague Authority","of Overconfidence","of Mild Regret","of Unpaid Overtime","of the Side Eye","of Budget Heroism","of Questionable Math"];
+  const slots = ["Head","Body","Hands","Feet","Trinket","Weapon","Offhand"];
+  const nounToSlot = {Helm:"Head",Tunic:"Body",Gloves:"Hands",Boots:"Feet",Amulet:"Trinket",Sword:"Weapon",Dagger:"Weapon",Mace:"Weapon",Shield:"Offhand",Orb:"Offhand",Ledger:"Trinket"};
+
+  // ---------- state ----------
+  let heroClass = rand(classes);
+  let mood = rand(moods);
+  let moodDrift = 0;
+
+  let level = 1, xp = 0, gold = 0;
+  let hpMax = 30, hp = 30;
+
+  // NEW: potions resource
+  let potions = 0;
+
+  let bag = [];
+  let equipped = {}; for(const s of slots) equipped[s] = null;
+
+  let party = [];
+  let nextPartyId = 1;
+
+  let location = "Wilderness";
+  let currentMonster = null;
+
+  let townTicksRemaining = 0;
+  let townPauseMsRemaining = 0;
+
+  let paused = false;
+  let loopHandle = null;
+  let tickMs = 525;
+
+  let fights = 0;
+
+  // ---------- economy: potion pricing & effects ----------
+  function potionCost(){
+    // scales gently so it stays relevant
+    return Math.floor(6 + level * 1.6);
+  }
+  function potionHealAmount(){
+    // strong but not full; town is full heal
+    return Math.floor(hpMax * 0.45) + 6;
+  }
+
+  function drinkPotion(context="field"){
+    if(potions <= 0){
+      if(context === "button") log(`🧴 No potions. Your bag is full of symbolism.`);
+      return false;
+    }
+    if(hp >= hpMax){
+      if(context === "button") log(`🧴 You are already at full health. The potion judges you.`);
+      return false;
+    }
+
+    potions--;
+    const healed = Math.min(hpMax - hp, potionHealAmount());
+    hp += healed;
+
+    log(`🧴 You drink a potion and heal <b>${healed}</b> HP.`, "event-town");
+    pulse("hp"); pulse("pots");
+    return true;
+  }
+
+  function buyPotionOne(source="town"){
+    const cost = potionCost();
+    if(gold < cost) return false;
+    gold -= cost;
+    potions++;
+    if(source === "town") tlog(`🧴 Bought a health potion for <b>${cost}</b>g.`, "event-town");
+    pulse("gold"); pulse("pots");
+    return true;
+  }
+
+  // ---------- stat model ----------
+  function derivedStats(){
+    let power = Math.floor(level * 1.2);
+    let defense = Math.floor(level * 0.7);
+    let critP = 10;
+    let dodgeP = 8;
+
+    for(const s of slots){
+      const g = equipped[s];
+      if(!g) continue;
+      power += g.stats.power;
+      defense += g.stats.defense;
+      critP += g.stats.crit;
+      dodgeP += g.stats.dodge;
+    }
+
+    critP = clamp(critP, 0, 55);  // slightly wider since gear is stronger now
+    dodgeP = clamp(dodgeP, 0, 50);
+    return { power, defense, critP, dodgeP };
+  }
+
+  // ---------- render ----------
+  function xpNeed(){
+    const fast = el("fastLevel").checked;
+    return fast ? Math.floor(12 + level * 10) : Math.floor(25 + level * 20);
+  }
+
+  function renderParty(){
+    el("partyCount").textContent = String(party.length);
+    const box = el("partyBox");
+    if(party.length === 0){
+      box.innerHTML = `<div class="dim">No allies. Just you and your paperwork.</div>`;
+      return;
+    }
+    box.innerHTML = party.map(p => {
+      const left = Math.max(0, p.expiresAtLevel - level);
+      return `<div>🤝 <b>${p.name}</b> <span class="dim">(${p.role})</span> — <span class="dim">${left} lvls left</span></div>`;
+    }).join("");
+  }
+
+  function applyVisualProgressTheme(){
+    const a = (210 + (level * 7)) % 360;
+    const b = (280 + (level * 9)) % 360;
+    document.documentElement.style.setProperty("--accent", String(a));
+    document.documentElement.style.setProperty("--accent2", String(b));
+  }
+
+  function render(){
+    el("heroClass").textContent = heroClass;
+    el("level").textContent = String(level);
+    el("xp").textContent = String(xp);
+    el("xpNeed").textContent = String(xpNeed());
+    el("gold").textContent = String(gold);
+    el("hp").textContent = String(hp);
+    el("hpMax").textContent = String(hpMax);
+    el("pots").textContent = String(potions);
+    el("location").textContent = location;
+
+    const need = xpNeed();
+    const pct = need <= 0 ? 0 : clamp((xp / need) * 100, 0, 100);
+    el("xpBar").style.width = pct.toFixed(1) + "%";
+
+    el("moodName").textContent = mood.name;
+    el("moodFlavor").textContent = mood.flavor;
+    el("moodDrift").textContent = `${Math.round(moodDrift)}%`;
+
+    const ds = derivedStats();
+    el("power").textContent = String(ds.power);
+    el("defense").textContent = String(ds.defense);
+    el("critp").textContent = `${ds.critP}%`;
+    el("dodgep").textContent = `${ds.dodgeP}%`;
+
+    renderParty();
+
+    if(!currentMonster){
+      el("monsterName").textContent = "—";
+      el("mHP").textContent = "0";
+      el("mMax").textContent = "0";
+      el("mAtk").textContent = "0";
+      el("mStatus").textContent = "Idle";
+      el("mLast").textContent = "—";
+    } else {
+      el("monsterName").textContent = currentMonster.name;
+      el("mHP").textContent = String(currentMonster.hp);
+      el("mMax").textContent = String(currentMonster.maxHp);
+      el("mAtk").textContent = String(currentMonster.atk);
+      el("mStatus").textContent = currentMonster.status;
+      el("mLast").textContent = currentMonster.lastEvent || "—";
+    }
+
+    el("invCount").textContent = String(bag.length);
+
+    el("inventoryBox").innerHTML =
+      bag.slice(-90).map(it => {
+        if(it.type === "gear"){
+          const s = it.stats;
+          return `<div>🧰 ${it.name} <span class="dim">(${it.slot})</span> <span class="dim">P${s.power}/D${s.defense}</span> <span class="dim">sell ${it.value}g</span></div>`;
+        }
+        return `<div>🎒 ${it.name} <span class="dim">sell ${it.value}g</span></div>`;
+      }).join("") || `<div class="dim">Empty, spiritually.</div>`;
+
+    el("equippedBox").innerHTML =
+      slots.map(slot => {
+        const g = equipped[slot];
+        if(!g) return `<div><span class="dim">${slot}:</span> <span class="dim">None</span></div>`;
+        const s = g.stats;
+        return `<div><span class="dim">${slot}:</span> 🧷 ${g.name} <span class="dim">(P${s.power}/D${s.defense}, C+${s.crit}%, D+${s.dodge}%)</span></div>`;
+      }).join("");
+
+    applyVisualProgressTheme();
+  }
+
+  // ---------- content generation ----------
+  function genGear(){
+    const noun = rand(gearNoun);
+    const slot = nounToSlot[noun] || rand(slots);
+    const name = `${rand(gearAdj)} ${noun} ${rand(gearSuffix)}`;
+
+    // BASE rolls
+    const basePower = Math.max(0, Math.floor(level * 0.6 + Math.random() * (2 + level*0.2)));
+    const baseDefense = Math.max(0, Math.floor(level * 0.45 + Math.random() * (2 + level*0.15)));
+    const baseCrit = Math.random() < 0.25 ? 1 : (Math.random() < 0.10 ? 2 : 0);
+    const baseDodge = Math.random() < 0.20 ? 1 : (Math.random() < 0.08 ? 2 : 0);
+
+    // ✅ REQUEST: Gear improves stats 50% more
+    // Multiply each stat contribution by 1.5 (keep integers).
+    const power = Math.max(0, Math.floor(basePower * 1.5));
+    const defense = Math.max(0, Math.floor(baseDefense * 1.5));
+    const crit = Math.max(0, Math.round(baseCrit * 1.5));     // 1 -> 2 sometimes, 2 -> 3
+    const dodge = Math.max(0, Math.round(baseDodge * 1.5));
+
+    const price = Math.floor(6 + level * 1.4 + Math.random() * 6);
+    const value = Math.max(1, Math.floor(price * (0.35 + Math.random()*0.25)));
+
+    return { type:"gear", name, slot, price, value, stats:{power, defense, crit, dodge} };
+  }
+
+  function genJunk(){
+    const value = 1 + (Math.random()<0.28?1:0) + (Math.random()<0.10?1:0);
+    return { type:"junk", name: rand(junkItems), value };
+  }
+
+  function equipGear(gear, context){
+    const prev = equipped[gear.slot];
+    equipped[gear.slot] = gear;
+
+    const msg = prev
+      ? `🔁 Replaced <b>${gear.slot}</b>: <span class="dim">${prev.name}</span> → <b>${gear.name}</b>.`
+      : `🧷 Equipped <b>${gear.name}</b> to <b>${gear.slot}</b>.`;
+
+    if(context === "town") tlog(msg, "event-gear");
+    else log(msg, "event-gear");
+
+    pulse("power"); pulse("defense");
+  }
+
+  // ---------- party ----------
+  function maybeExpireParty(){
+    if(party.length === 0) return;
+    const still = [];
+    for(const p of party){
+      if(level >= p.expiresAtLevel){
+        plog(`👋 <b>${p.name}</b> leaves after ${p.expiresAtLevel - p.joinLevel} levels. “I have other quests.”`);
+      } else {
+        still.push(p);
+      }
+    }
+    party = still;
+  }
+
+  function recruitPartyMember(reason){
+    if(party.length >= 3){
+      plog(`🚫 A potential ally tries to join, sees your party is full, and becomes a rumor.`);
+      return false;
+    }
+    const name = `${rand(allyAdj)} ${rand(allyNoun)}`;
+    const role = rand(allyRole);
+    const duration = randi(5, 10);
+    const expiresAtLevel = level + duration;
+
+    let critBonus = 1, dodgeBonus = 1, chaos = false;
+    if(role === "Support"){ critBonus = 2; dodgeBonus = 2; }
+    if(role === "Chaos"){ chaos = true; }
+
+    party.push({
+      id: nextPartyId++,
+      name, role,
+      joinLevel: level,
+      expiresAtLevel,
+      critBonus,
+      dodgeBonus,
+      chaos
+    });
+
+    plog(`🤝 <b>${name}</b> joins (${role}) for <b>${duration}</b> levels. Reason: <span class="dim">${reason}</span>.`);
+    return true;
+  }
+
+  function partyAssistLoot(){
+    if(party.length === 0) return;
+    if(Math.random() < 0.18){
+      const helper = rand(party);
+      if(Math.random() < 0.62){
+        const j = genJunk();
+        bag.push(j);
+        plog(`🎒 <b>${helper.name}</b> finds <b>${j.name}</b>. (sell ${j.value}g)`);
+      } else {
+        const g = genGear();
+        bag.push(g);
+        plog(`🧰 <b>${helper.name}</b> drags in gear: <b>${g.name}</b> <span class="dim">(${g.slot})</span>.`);
+        equipGear(g, "field");
+      }
+    }
+  }
+
+  // ---------- monster ----------
+  function spawnMonster(){
+    if(currentMonster) return;
+
+    fights++;
+    const baseName = rand(monsters);
+    const isBoss = (fights % 6 === 0);
+
+    let maxHp = Math.floor(20 + level * 9 + Math.random() * 12);
+    maxHp = Math.floor(maxHp * 1.20); // +20% monster HP
+
+    let atk = Math.floor(3 + level * 0.9 + Math.random() * 4);
+
+    if(isBoss){
+      maxHp = Math.floor(maxHp * 1.35);
+      atk = Math.floor(atk * 1.20);
+    }
+
+    const name = isBoss ? `👑 ${baseName}` : baseName;
+
+    currentMonster = {
+      name,
+      maxHp,
+      hp:maxHp,
+      atk,
+      status: isBoss ? "Boss" : "Hostile",
+      lastEvent: isBoss ? "It arrives with an executive stamp." : "It arrives with confident paperwork.",
+      isBoss,
+      bloodiedSpoke:false,
+      phase2:false
+    };
+
+    log(
+      isBoss
+        ? `⚔️ <b>MINI-BOSS!</b> A <b>${name}</b> appears (HP <b>${maxHp}</b>).`
+        : `⚔️ A <b>${name}</b> appears (HP <b>${maxHp}</b>).`,
+      isBoss ? "event-boss" : "event-mood"
+    );
+    pulse("monsterName"); pulse("mHP"); pulse("mMax");
+  }
+
+  function monsterFlavorTick(){
+    if(!currentMonster) return;
+
+    if(!currentMonster.bloodiedSpoke && currentMonster.hp <= currentMonster.maxHp * 0.50){
+      currentMonster.bloodiedSpoke = true;
+      clog(`🩸 <b>${currentMonster.name}</b> is BLOODIED and begins narrating its own receipts.`, currentMonster.isBoss ? "event-boss" : "");
+    }
+
+    if(currentMonster.isBoss && currentMonster.hp > 0 && currentMonster.hp <= currentMonster.maxHp * 0.25 && !currentMonster.phase2){
+      currentMonster.phase2 = true;
+      clog(`🔥 <b>${currentMonster.name}</b> enters <b>Phase Two: Audit Mode</b>.`, "event-boss");
+    }
+  }
+
+  // ---------- combat math ----------
+  function heroRoll(){
+    const ds = derivedStats();
+    const miss = Math.random() < 0.10;
+    const crit = !miss && Math.random() < (ds.critP / 100);
+    const base = 4 + Math.floor(level * 0.9) + Math.floor(ds.power * 0.55);
+    const wiggle = Math.floor(Math.random() * 5);
+    const dmg = miss ? 0 : (crit ? base + wiggle + Math.floor(base * 0.6) : base + wiggle);
+    return { dmg, miss, crit };
+  }
+
+  function partyRoll(member){
+    const ds = derivedStats();
+    const miss = Math.random() < 0.12;
+    const critChance = clamp((6 + member.critBonus) / 100, 0, 0.25);
+    const crit = !miss && Math.random() < critChance;
+
+    const heroLikeBase = 4 + Math.floor(level * 0.9) + Math.floor(ds.power * 0.55);
+    const wiggle = Math.floor(Math.random() * 5);
+
+    let raw = heroLikeBase + wiggle;
+    if(member.chaos){
+      raw = Math.floor(raw * clamp(0.85 + (Math.random()*0.40 - 0.20), 0.70, 1.05));
+    }
+
+    const scaled = Math.max(0, Math.floor(raw * 0.20));
+    const dmg = miss ? 0 : (crit ? Math.floor(scaled * 1.65) : scaled);
+
+    return { dmg, miss, crit };
+  }
+
+  function monsterRoll(){
+    const ds = derivedStats();
+    const partyDodgeBonus = party.reduce((sum,p)=>sum+p.dodgeBonus, 0);
+    const dodgeP = clamp(ds.dodgeP + Math.floor(partyDodgeBonus * 0.5), 0, 50);
+
+    const dodge = Math.random() < (dodgeP / 100);
+    const crit = !dodge && Math.random() < 0.10;
+
+    const base = currentMonster.atk + Math.floor(currentMonster.atk * 0.35) - Math.floor(ds.defense * 0.35);
+    const wiggle = Math.floor(Math.random() * 4);
+    const dmgRaw = base + wiggle;
+    const dmg = dodge ? 0 : Math.max(0, dmgRaw + (crit ? Math.floor(Math.max(3, dmgRaw) * 0.6) : 0));
+    return { dmg, dodge, crit, dodgeP };
+  }
+
+  function heroAttack(){
+    if(!currentMonster) return;
+    const {dmg, miss, crit} = heroRoll();
+
+    if(miss){
+      currentMonster.lastEvent = "You attack the concept of teeth. It refuses.";
+      clog(`🫥 You miss <b>${currentMonster.name}</b>.`);
+    } else {
+      currentMonster.hp = Math.max(0, currentMonster.hp - dmg);
+      currentMonster.lastEvent = crit ? `CRIT for ${dmg}.` : `Hit for ${dmg}.`;
+      clog(crit ? `💥 <b>CRIT!</b> You hit for <b>${dmg}</b>.` : `🗡️ You hit for <b>${dmg}</b>.`);
+      pulse("mHP");
+    }
+
+    monsterFlavorTick();
+  }
+
+  function partyAttacks(){
+    if(!currentMonster) return;
+    if(party.length === 0) return;
+
+    for(const member of party){
+      if(!currentMonster) break;
+
+      const {dmg, miss, crit} = partyRoll(member);
+      if(miss){
+        clog(`🤝 <b>${member.name}</b> misses (supportively).`);
+      } else if(dmg <= 0) {
+        clog(`🤝 <b>${member.name}</b> deals <b>0</b> damage (symbolic).`);
+      } else {
+        currentMonster.hp = Math.max(0, currentMonster.hp - dmg);
+        clog(crit
+          ? `💥 <b>${member.name}</b> <b>CRITS</b> for <b>${dmg}</b>.`
+          : `🤝 <b>${member.name}</b> hits for <b>${dmg}</b>.`
+        );
+        pulse("mHP");
+      }
+
+      monsterFlavorTick();
+    }
+  }
+
+  function resolveMonsterDeathIfAny(){
+    if(!currentMonster) return;
+    if(currentMonster.hp > 0) return;
+
+    const xpGain = Math.floor(12 + level * 6 + Math.random() * 10);
+    const goldGain = Math.floor(2 + Math.random() * 8);
+    xp += xpGain; gold += goldGain;
+
+    clog(`🏁 <b>${currentMonster.name}</b> defeated. +${xpGain} XP, +${goldGain}g.`, currentMonster.isBoss ? "event-boss" : "");
+    log(`🏁 You defeat <b>${currentMonster.name}</b>. +${xpGain} XP, +${goldGain} gold.`, currentMonster.isBoss ? "event-boss" : "");
+    currentMonster = null;
+    pulse("xp"); pulse("gold");
+  }
+
+  function monsterAttack(){
+    if(!currentMonster) return;
+    const {dmg, dodge, crit, dodgeP} = monsterRoll();
+
+    if(dodge){
+      currentMonster.lastEvent = "It swings. You are briefly elsewhere.";
+      clog(`🌀 You dodge (${dodgeP}%). <b>${currentMonster.name}</b> hits air.`);
+    } else {
+      hp = Math.max(0, hp - dmg);
+      currentMonster.lastEvent = crit ? `CRIT for ${dmg}.` : `Hit for ${dmg}.`;
+      clog(crit
+        ? `💀 <b>${currentMonster.name}</b> <b>CRITS</b> you for <b>${dmg}</b>!`
+        : `🩸 <b>${currentMonster.name}</b> hits you for <b>${dmg}</b>.`
+      );
+      pulse("hp");
+    }
+
+    // Auto-drink potion if you’re low (keeps it watchable, avoids long death loops)
+    if(hp > 0 && hp < Math.floor(hpMax * 0.33) && potions > 0 && Math.random() < 0.70){
+      log(`<span class="dim">Emergency protocol: potion.</span>`);
+      drinkPotion("field");
+    }
+
+    if(hp <= 0){
+      clog(`☠️ You die. Death requests a signature.`, "event-death");
+      log(`☠️ You die. This is a temporary administrative state.`, "event-death");
+      const fee = Math.min(gold, 4 + Math.floor(Math.random() * 8));
+      gold -= fee;
+      hp = hpMax;
+      log(`🧾 Resurrected after paying <b>${fee}</b>g in "processing fees".`, "event-death");
+      currentMonster = null;
+      pulse("gold");
+    }
+  }
+
+  // ---------- loot / progression ----------
+  function lootTick(){
+    partyAssistLoot();
+
+    const r = Math.random();
+    if(r < 0.46){
+      const j = genJunk();
+      bag.push(j);
+      log(`🎒 You find <b>${j.name}</b>. (sell ${j.value}g)`);
+    } else if(r < 0.74){
+      const g = genGear();
+      bag.push(g);
+      log(`🧰 Gear found: <b>${g.name}</b> <span class="dim">(${g.slot})</span>.`, "event-gear");
+      equipGear(g, "field");
+    } else if(r < 0.90){
+      const xpGain = Math.floor(4 + Math.random() * 10);
+      xp += xpGain;
+      log(`📈 You gain ${xpGain} XP by reading the back of a hostile form.`);
+      pulse("xp");
+      el("xpBar").classList.remove("pulse"); void el("xpBar").offsetWidth; el("xpBar").classList.add("pulse");
+    } else {
+      log(`📚 You improve <i>${rand(uselessSkills)}</i>. Reality remains unchanged.`);
+    }
+  }
+
+  // ---------- town ----------
+  function enterTown(reason){
+    location = "Town";
+    currentMonster = null;
+    townTicksRemaining = 5;
+    townPauseMsRemaining = 2000;
+
+    // ✅ REQUEST: Going to town replenishes health
+    const before = hp;
+    hp = hpMax;
+    if(before < hpMax){
+      tlog(`🛏️ Rested at town. HP restored to full.`, "event-town");
+      log(`🛏️ Town air seals your wounds with paperwork. Full HP.`, "event-town");
+      pulse("hp"); pulse("hpMax");
+    }
+
+    const ts = new Date().toLocaleTimeString();
+    tlog(`<b>🏘️ TOWN TRIP!</b> (${reason}) at ${ts}.`, "event-town");
+    log(`🏘️ <b>TOWN TRIP!</b> (${reason}) You head back to town. The screen waits politely.`, "event-town");
+    tlog(`<span class="dim">Entering town... pausing 2 seconds for dramatic bureaucracy.</span>`, "event-town");
+    pulse("location");
+  }
+
+  function sellAll(){
+    if(bag.length === 0) return 0;
+    let total = 0;
+    for(const it of bag) total += (it.value || 1);
+    bag = [];
+    gold += total;
+    return total;
+  }
+
+  function buyOneGear(){
+    const g = genGear();
+    if(gold < g.price){
+      tlog(`🪙 Couldn’t afford <b>${g.name}</b> (${g.price}g).`, "event-town");
+      log(`🪙 You cannot afford <b>${g.name}</b>. The shopkeeper wins by standing still.`, "event-town");
+      return;
+    }
+    gold -= g.price;
+    tlog(`🛒 Bought <b>${g.name}</b> (${g.slot}) for <b>${g.price}</b>g.`, "event-town");
+    equipGear(g, "town");
+    pulse("gold");
+  }
+
+  // ✅ REQUEST: gold used for health potions
+  function townPotionShop(){
+    const cost = potionCost();
+
+    // buy until you have 2 potions or you can't afford
+    let bought = 0;
+    while(potions < 2 && gold >= cost){
+      buyPotionOne("town");
+      bought++;
+    }
+
+    if(bought > 0){
+      tlog(`🧴 Stocked up. Potions: <b>${potions}</b>.`, "event-town");
+      log(`🧴 You convert gold into emergency optimism. Potions: <b>${potions}</b>.`, "event-town");
+    } else {
+      tlog(`🧴 Potion price: <b>${cost}</b>g. You stare at it until it becomes philosophical.`, "event-town");
+    }
+  }
+
+  function townTick(){
+    if(townTicksRemaining === 5){
+      const earned = sellAll();
+      if(earned > 0){
+        tlog(`🧺 Sold everything for <b>${earned}</b>g.`, "event-town");
+        log(`🧺 You liquidate your entire personality for <b>${earned}</b> gold.`, "event-town");
+        pulse("gold");
+      } else {
+        tlog(`🧺 Sold nothing. The merchant applauds your emptiness.`, "event-town");
+        log(`🧺 You try to sell nothing. The merchant nods, troubled.`, "event-town");
+      }
+    } else if(townTicksRemaining === 4){
+      // NEW: potions happen before gear so survivability stays stable
+      townPotionShop();
+    } else if(townTicksRemaining === 3){
+      buyOneGear();
+    } else if(townTicksRemaining === 2){
+      if(Math.random() < 0.55){
+        const fee = Math.min(gold, 1 + Math.floor(Math.random()*6));
+        gold -= fee;
+        tlog(`🧵 Paid <b>${fee}</b>g for repairs to an abstract concept.`, "event-town");
+        log(`🧵 You pay <b>${fee}</b> gold to repair something non-physical.`, "event-town");
+        pulse("gold");
+      } else {
+        tlog(`🗞️ Read town news. It was about you, again.`, "event-town");
+        log(`🗞️ The town bulletin contains your name and the word "again."`, "event-town");
+      }
+    } else if(townTicksRemaining === 1){
+      if(Math.random() < 0.40){
+        mood = rand(moods);
+        moodDrift = 0;
+        tlog(`🌀 Mood reboot: <b>${mood.name}</b>.`, "event-mood");
+        log(`🌀 Town air reconfigures your soul into: <b>${mood.name}</b>.`, "event-mood");
+        pulse("moodName");
+      } else {
+        tlog(`🧾 Signed paperwork that signs you back.`, "event-town");
+        log(`🧾 You sign paperwork. The paperwork signs you.`, "event-town");
+      }
+    } else if(townTicksRemaining === 0){
+      tlog(`🚪 Left town immediately to avoid narrative arcs.`, "event-town");
+      log(`🚪 You leave town immediately to avoid relationships.`, "event-town");
+      location = "Wilderness";
+      pulse("location");
+    }
+    townTicksRemaining = Math.max(0, townTicksRemaining - 1);
+  }
+
+  // ---------- mood drift ----------
+  function moodTick(){
+    moodDrift = Math.min(100, moodDrift + 1.0 + Math.random() * 0.9);
+    if(moodDrift >= 100){
+      moodDrift = 0;
+      mood = rand(moods);
+      log(`🌀 Mood drift completes. New mood: <b>${mood.name}</b>.`, "event-mood");
+      pulse("moodName");
+    }
+  }
+
+  // ---------- leveling ----------
+  function maybeLevelUp(){
+    const need = xpNeed();
+    if(xp >= need){
+      xp -= need;
+      level++;
+      hpMax += 3 + Math.floor(Math.random()*3);
+      hp = hpMax;
+
+      log(`✨ <b>LEVEL UP!</b> You reach level <b>${level}</b>.`, "event-level");
+      pulse("level"); pulse("hp"); pulse("hpMax");
+
+      applyVisualProgressTheme();
+      maybeExpireParty();
+
+      if(Math.random() < 0.42){
+        recruitPartyMember("level up magnetism");
+      }
+
+      enterTown("level up");
+    }
+  }
+
+  // ---------- main tick ----------
+  function tick(){
+    try {
+      moodTick();
+      maybeExpireParty();
+
+      if(townPauseMsRemaining > 0){
+        townPauseMsRemaining -= tickMs;
+        if(townPauseMsRemaining <= 0){
+          townPauseMsRemaining = 0;
+          tlog(`<span class="dim">Pause complete. Bureaucracy resumes.</span>`, "event-town");
+          log(`<span class="dim">The town unfreezes. Time clocks in.</span>`, "event-town");
+        }
+        render();
+        return;
+      }
+
+      if(location === "Town"){
+        townTick();
+        render();
+        return;
+      }
+
+      if(!currentMonster && Math.random() < 0.62) spawnMonster();
+
+      if(currentMonster){
+        const r = Math.random();
+        if(r < 0.74){
+          heroAttack();
+          partyAttacks();
+          resolveMonsterDeathIfAny();
+          if(currentMonster) monsterAttack();
+        } else if(r < 0.92){
+          monsterAttack();
+          if(currentMonster){
+            heroAttack();
+            partyAttacks();
+            resolveMonsterDeathIfAny();
+          }
+        } else {
+          clog(`🤝 You attempt diplomacy. <b>${currentMonster.name}</b> counteroffers with violence.`);
+          monsterAttack();
+        }
+      } else {
+        lootTick();
+      }
+
+      maybeLevelUp();
+      render();
+    } catch(e){
+      showError(e);
+      if(loopHandle) clearInterval(loopHandle);
+    }
+  }
+
+  // ---------- controls ----------
+  function setSpeed(ms){
+    tickMs = ms;
+    el("speedLabel").textContent = String(ms);
+    if(loopHandle) clearInterval(loopHandle);
+    loopHandle = paused ? null : setInterval(tick, tickMs);
+  }
+
+  el("btnPause").addEventListener("click", () => {
+    paused = !paused;
+    el("btnPause").textContent = paused ? "Resume" : "Pause";
+    if(paused){
+      if(loopHandle) clearInterval(loopHandle);
+      loopHandle = null;
+    } else {
+      loopHandle = setInterval(tick, tickMs);
+    }
+  });
+
+  el("btnStep").addEventListener("click", () => tick());
+  el("speed").addEventListener("input", (e) => setSpeed(parseInt(e.target.value, 10)));
+  el("btnXP").addEventListener("click", () => { xp += 50; log("🧪 Debug: +50 XP."); pulse("xp"); maybeLevelUp(); render(); });
+  el("btnGold").addEventListener("click", () => { gold += 20; log("🧪 Debug: +20 gold."); pulse("gold"); render(); });
+  el("btnTown").addEventListener("click", () => { enterTown("debug"); render(); });
+  el("btnSpawn").addEventListener("click", () => { spawnMonster(); render(); });
+  el("btnRecruit").addEventListener("click", () => { recruitPartyMember("debug button"); render(); });
+
+  // NEW: manual potion button
+  el("btnPotion").addEventListener("click", () => { drinkPotion("button"); render(); });
+
+  el("btnClear").addEventListener("click", () => { logBox.innerHTML=""; lastLog = { kind:"", html:"", eventClass:"", el:null, count:1 }; log("🧽 Log cleared."); });
+
+  // ---------- boot ----------
+  function boot(){
+    log(`<span class="dim">You begin your quest as a <b>${heroClass}</b>. Your destiny is algorithmic.</span>`);
+    tlog(`<span class="dim">Town ledger initialized. Everything is audited. Nothing is explained.</span>`, "event-town");
+
+    if(Math.random() < 0.70) recruitPartyMember("opening credits");
+
+    render();
+  }
+  boot();
+
+  setSpeed(parseInt(el("speed").value, 10));
+})();
+</script>
+</body>
+</html>
